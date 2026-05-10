@@ -1,0 +1,9 @@
+name: taupair
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - numpy=1.25
+  - matplotlib
+  - gfortran
+  - setuptools<60
