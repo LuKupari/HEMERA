@@ -1,4 +1,4 @@
-# Tau Pair Supplemental Code
+# Tau Pair Tridents Cross-Sections
 
 This code builds the Fortran integrations with `f2py` and plots the outgoing
 muon energy differential cross sections against the reference curves.
@@ -24,13 +24,12 @@ This writes the compiled extension modules into `modules/`.
 
 ## Run
 
-Run the comparison plot from this directory:
-
+Python scripts are included to generate two seperate differential cross sections,
+as an example for using the modules; they can be run with.
 ```bash
-python differential_cross_section_check.py
+python invariant_mass_distribution.py
+python outgoing_muon_energy_distribution.py
 ```
+These distribution files are also saved in the `data/` directory.
 
-The script computes the three cross sections, prints the integrated totals, and
-opens a plot comparing the `f2py` results with the CSV reference curves in
-`data/reference/`.
 
