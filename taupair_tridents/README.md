@@ -23,9 +23,8 @@ python build_modules.py
 This writes the compiled extension modules into `modules/`.
 
 ## Run
-
-Python scripts are included to generate two seperate differential cross sections,
-as an example for using the modules; they can be run with.
+Python scripts are included to generate two separate differential cross sections as examples of how to use the modules. 
+They can be run with:
 ```bash
 python invariant_mass_distribution.py
 python outgoing_muon_energy_distribution.py
