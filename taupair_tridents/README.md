@@ -1,7 +1,7 @@
 # Tau Pair Tridents Cross-Sections
 
 This code builds the Fortran integrations with `f2py` and plots the outgoing
-muon energy differential cross sections against the reference curves.
+muon energy differential cross sections.
 
 ## Setup
 
