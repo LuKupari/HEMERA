@@ -3,23 +3,44 @@ from modules import a_diagram_ext
 from modules import b_diagram_sm_ext
 from modules import b_diagram_bsm_ext
 
-def result_dict(e1_lo, e1_hi, sigma, avgi, sd):
+def result_dict(bin_lo, bin_hi, sigma, avgi, sd, distribution):
     return {
-        "e1_lo": e1_lo,
-        "e1_hi": e1_hi,
+        "bin_lo": bin_lo,
+        "bin_hi": bin_hi,
+        "e1_lo": bin_lo,
+        "e1_hi": bin_hi,
+        "distribution": distribution,
         "sigma": sigma,
         "avgi": avgi,
         "sd": sd,
-        "covered_range": (float(e1_lo[0]), float(e1_hi[-1])),
+        "covered_range": (float(bin_lo[0]), float(bin_hi[-1])),
     }
-    
-def energy_edges(e1_min: float, bin_width: float, nbins: int):
+
+def bin_edges(bin_min: float, bin_width: float, nbins: int):
     if nbins <= 0:
         raise ValueError("nbins must be positive")
     if bin_width <= 0.0:
         raise ValueError("bin_width must be positive")
-    e1_lo = e1_min + np.arange(nbins, dtype=np.float64) * bin_width
-    return e1_lo, e1_lo + bin_width
+    bin_lo = bin_min + np.arange(nbins, dtype=np.float64) * bin_width
+    return bin_lo, bin_lo + bin_width
+
+def energy_edges(e1_min: float, bin_width: float, nbins: int):
+    return bin_edges(e1_min, bin_width, nbins)
+
+def distribution_args(invariant_mass: bool, e1_min: float, bin_width: float, nbins: int):
+    distribution = "invariant_mass" if invariant_mass else "outgoing_muon_energy"
+    return (*bin_edges(e1_min, bin_width, nbins), distribution, int(invariant_mass))
+
+def call_fortran(func, args, distribution_flag: int):
+    try:
+        return func(*args, distribution_flag)
+    except TypeError:
+        if distribution_flag == 0:
+            return func(*args)
+        raise RuntimeError(
+            "The compiled f2py module does not accept the distribution flag. "
+            "Rebuild the modules after replacing the Fortran sources."
+        ) from None
 
 def total_cross_section(result: dict) -> tuple[float, float]:
     sigma = result["sigma"]
@@ -39,15 +60,22 @@ def a_sm_cross_section(
     ncall: int = 1_000_000,
     itmx: int = 10,
     verbose: bool = False,
+    invariant_mass: bool = False,
 ) -> dict:
-    """Compute the SM a-diagram cross section in outgoing-energy bins."""
+    """Compute the SM a-diagram cross section in selected distribution bins."""
 
-    e1_lo, e1_hi = energy_edges(e1_min, bin_width, nbins)
-    sigma, avgi, sd = a_diagram_ext.compute_a_sm(
-        z, a, mp, mmu, me, emu, e1_lo, e1_hi, ncall, itmx,
-        1 if verbose else 0,
+    bin_lo, bin_hi, distribution, distribution_flag = distribution_args(
+        invariant_mass, e1_min, bin_width, nbins
     )
-    return result_dict(e1_lo, e1_hi, sigma, avgi, sd)
+    sigma, avgi, sd = call_fortran(
+        a_diagram_ext.compute_a_sm,
+        (
+            z, a, mp, mmu, me, emu, bin_lo, bin_hi, ncall, itmx,
+            1 if verbose else 0,
+        ),
+        distribution_flag,
+    )
+    return result_dict(bin_lo, bin_hi, sigma, avgi, sd, distribution)
 
 
 def b_sm_cross_section(
@@ -63,15 +91,22 @@ def b_sm_cross_section(
     ncall: int = 1_000_000,
     itmx: int = 10,
     verbose: bool = False,
+    invariant_mass: bool = False,
 ) -> dict:
-    """Compute the SM b-diagram cross section in outgoing-energy bins."""
+    """Compute the SM b-diagram cross section in selected distribution bins."""
 
-    e1_lo, e1_hi = energy_edges(e1_min, bin_width, nbins)
-    sigma, avgi, sd = b_diagram_sm_ext.compute_b_sm(
-        z, a, mp, mmu, me, emu, e1_lo, e1_hi, ncall, itmx,
-        1 if verbose else 0,
+    bin_lo, bin_hi, distribution, distribution_flag = distribution_args(
+        invariant_mass, e1_min, bin_width, nbins
     )
-    return result_dict(e1_lo, e1_hi, sigma, avgi, sd)
+    sigma, avgi, sd = call_fortran(
+        b_diagram_sm_ext.compute_b_sm,
+        (
+            z, a, mp, mmu, me, emu, bin_lo, bin_hi, ncall, itmx,
+            1 if verbose else 0,
+        ),
+        distribution_flag,
+    )
+    return result_dict(bin_lo, bin_hi, sigma, avgi, sd, distribution)
 
 
 def b_bsm_cross_section(
@@ -89,12 +124,19 @@ def b_bsm_cross_section(
     ncall: int = 1_000_000,
     itmx: int = 10,
     verbose: bool = False,
+    invariant_mass: bool = False,
 ) -> dict:
-    """Compute the BSM b-diagram cross section in outgoing-energy bins."""
+    """Compute the BSM b-diagram cross section in selected distribution bins."""
 
-    e1_lo, e1_hi = energy_edges(e1_min, bin_width, nbins)
-    sigma, avgi, sd = b_diagram_bsm_ext.compute_b_bsm(
-        z, a, mp, mmu, me, emu, mx, xi, e1_lo, e1_hi, ncall, itmx,
-        1 if verbose else 0,
+    bin_lo, bin_hi, distribution, distribution_flag = distribution_args(
+        invariant_mass, e1_min, bin_width, nbins
     )
-    return result_dict(e1_lo, e1_hi, sigma, avgi, sd)
+    sigma, avgi, sd = call_fortran(
+        b_diagram_bsm_ext.compute_b_bsm,
+        (
+            z, a, mp, mmu, me, emu, mx, xi, bin_lo, bin_hi, ncall, itmx,
+            1 if verbose else 0,
+        ),
+        distribution_flag,
+    )
+    return result_dict(bin_lo, bin_hi, sigma, avgi, sd, distribution)

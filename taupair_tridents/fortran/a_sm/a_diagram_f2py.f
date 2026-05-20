@@ -7,15 +7,17 @@ C     f2py wrapper for the a-diagram contribution.
 
       subroutine compute_a_sm(z_in, a_in, mp_in, mmu_in, me_in,
      x   emu_in, nbins, e1l_arr, e1u_arr, ncall_in, itmx_in,
-     x   nprn_in, results, avgi_arr, sd_arr)
+     x   nprn_in, distribution_in, results, avgi_arr, sd_arr)
 
 Cf2py intent(in)  :: z_in, a_in, mp_in, mmu_in, me_in, emu_in
 Cf2py intent(in)  :: nbins, e1l_arr, e1u_arr, ncall_in, itmx_in
-Cf2py intent(in)  :: nprn_in
+Cf2py intent(in)  :: nprn_in, distribution_in
 Cf2py intent(out) :: results, avgi_arr, sd_arr
 
       implicit real*8 (a-z)
       integer ndim,nprn,igraph,ib,nbins,ncall_in,itmx_in,nprn_in
+      integer distribution_in
+      logical :: emuout
       real*8 z_in,a_in,mp_in,mmu_in,me_in,emu_in
       real*8 e1l_arr(nbins),e1u_arr(nbins)
       real*8 results(nbins),avgi_arr(nbins),sd_arr(nbins)
@@ -30,7 +32,9 @@ Cf2py intent(out) :: results, avgi_arr, sd_arr
       common/chrg/z,a
       common/bsm/F2
       common/E1lim/e1l,e1u
+      common/InvMasslim/mttl,mttu
       external sxcint0
+      common/arg/emuout
       data cm2_scale /1.d-27/
 
       F2  = 0.d0
@@ -56,20 +60,51 @@ Cf2py intent(out) :: results, avgi_arr, sd_arr
       nprn = nprn_in
       igraph = 0
 
-      do ib = 1,nbins
+      emuout = distribution_in .eq. 0
 
-         e1l = e1l_arr(ib)
-         e1u = e1u_arr(ib)
+      if(emuout) then
 
-         call vegas(sxcint0,acc,ndim,ncall_in,itmx_in,nprn,igraph)
 
-         results(ib)  = s1*cm2_scale
-         avgi_arr(ib) = s1*cm2_scale
-         sd_arr(ib)   = s2*cm2_scale
-      end do
+         do ib = 1,nbins
 
-      return
-      end
+            e1l = e1l_arr(ib)
+            e1u = e1u_arr(ib)
+
+            call vegas(sxcint0,acc,ndim,ncall_in,itmx_in,nprn,igraph)
+
+            results(ib)  = s1*cm2_scale
+            avgi_arr(ib) = s1*cm2_scale
+            sd_arr(ib)   = s2*cm2_scale
+         end do
+
+      else
+
+!        New --------------------------------------------
+         do ib = 1,nbins
+
+            mttl = real(ib)+0.5d0
+            mttu = real(ib)+1.5d0
+
+            call vegas(sxcint0,acc,ndim,ncall_in,itmx_in,nprn,igraph)
+
+            xnorm = itmx_in*calls
+            sum = 0.d0
+            if (Isnan(sum)) sum = 0.d0
+
+            if (Isnan(s1)) s1 = 0.d0
+            if (Isnan(s2)) s2 = 0.d0
+            results(ib)  = s1*cm2_scale
+            avgi_arr(ib) = s1*cm2_scale
+            sd_arr(ib)   = s2*cm2_scale
+         end do
+
+      endif
+!     ------------------------------------------------------
+
+   
+
+         return
+         end
 
       
 
@@ -83,7 +118,8 @@ Cf2py intent(out) :: results, avgi_arr, sd_arr
      x   dly,dlt,tmin,tmax,mx2min,mx2max,v2min,v2max,sxcint0,cthe,phie,
      x   cthq,phiq,denom,vdsigdv0,dpair,capT,lamt,xmin,xmax,xjacp,dsig,
      x   xlams,capyinv,tinv,alpha,sx,sxmin,sxmax,s,tx,sum,xinv,
-     x   xmid,wgt,yx,e1,Ex,e1l,e1u
+     x   xmid,wgt,yx,e1,Ex,e1l,e1u,vx,mttl,mttu
+      logical emuout
       common/masses/me,mmu,mp,mhadmin,dm2,mmu2,mp2
       common/inputs/emu
       common/vegaswgt/wgt
@@ -93,6 +129,8 @@ Cf2py intent(out) :: results, avgi_arr, sd_arr
       common/tmx/tmin,tmax
       Common/bins/xmid(1000),xinv(1000),sum
       common/E1lim/e1l,e1u
+      common/InvMasslim/mttl,mttu
+      common/arg/emuout
       
       data pi/3.14159d0/,alpha/7.2993d-3/
 
@@ -179,15 +217,24 @@ c     takes care of one power of t in denominator
 c      If(e1.gt.e1out.or.e1.lt.e1in) sxcint0 = 0.d0
 
      
-
+      If(emuout) then
 c     -------------------------------------------------------------------------------
-      Ex = e1/emu
-      ix = Ex*100+1   
-      if (ix.gt.100)ix = 100 
+         Ex = e1/emu
+         ix = Ex*100+1   
+         if (ix.gt.100)ix = 100 
 
-      if (e1.le.e1l .or. e1.ge.e1u) then
-         sxcint0 = 0.d0
-      endif
+         if (e1.le.e1l .or. e1.ge.e1u) then
+            sxcint0 = 0.d0
+         endif
+
+      else
+
+         vx = dsqrt(v2)
+         If(vx.lt.mttl.or.vx.gt.mttu) then
+            sxcint0 = 0.d0
+         endif
+
+      endif      
 C     -------------------------------------------------------------------------------
 
 
@@ -209,7 +256,7 @@ C this function below if for the elastic portion of the cross section
       common/chrg/z,a
 c these variables are all in the eplus-eminus rest frame
 
-      common/lambdas/lamY,lams,lamq !these are defined in xint
+      common/lambdas/lamY,lams,lamq
 
       capT = -t
       S = 2.*mp*emu
@@ -280,4 +327,3 @@ c these variables are all in the eplus-eminus rest frame
       dot4 = a(0)*b(0)-a(1)*b(1)-a(2)*b(2)-a(3)*b(3)
       return
       end
-

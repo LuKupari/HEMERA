@@ -7,15 +7,18 @@ C     f2py wrapper for the BSM b-diagram contribution.
 
       subroutine compute_b_bsm(z_in, a_in, mp_in, mmu_in, me_in,
      x   emu_in, mx_in, xi_in, nbins, e1l_arr, e1u_arr,
-     x   ncall_in, itmx_in, nprn_in, results, avgi_arr, sd_arr)
+     x   ncall_in, itmx_in, nprn_in, distribution_in,
+     x   results, avgi_arr, sd_arr)
 
 Cf2py intent(in)  :: z_in, a_in, mp_in, mmu_in, me_in, emu_in
 Cf2py intent(in)  :: mx_in, xi_in, nbins, e1l_arr, e1u_arr
-Cf2py intent(in)  :: ncall_in, itmx_in, nprn_in
+Cf2py intent(in)  :: ncall_in, itmx_in, nprn_in, distribution_in
 Cf2py intent(out) :: results, avgi_arr, sd_arr
 
       implicit real*8 (a-z)
-      integer ndim,nprn,igraph,ib,nbins,ncall_in,itmx_in,nprn_in
+      integer ndim,nprn,igraph,ib,nbins,ncall_in,itmx_in,nprn_in,i
+      integer distribution_in,nbins_common
+      logical :: emuout
       real*8 z_in,a_in,mp_in,mmu_in,me_in,emu_in,mx_in,xi_in
       real*8 e1l_arr(nbins),e1u_arr(nbins)
       real*8 results(nbins),avgi_arr(nbins),sd_arr(nbins)
@@ -29,7 +32,11 @@ Cf2py intent(out) :: results, avgi_arr, sd_arr
       common/vegascalls/calls
       external sxcint0
       common/scalar/gmu2,gtau2
+      common/bins/xmid(1000),xinv(1000),xinv2(1000),sum,
+     x   nbins_common
       common/E1lim/e1l,e1u
+      common/InvMasslim/mttl,mttu
+      common/arg/emuout
       data cm2_scale /1.d-27/
 
       emu = emu_in
@@ -61,18 +68,52 @@ Cf2py intent(out) :: results, avgi_arr, sd_arr
       ndim = 8
       nprn = nprn_in
       igraph = 0
+      emuout = distribution_in .eq. 0
+      nbins_common = nbins
 
-      do ib = 1,nbins
+      if(emuout) then
 
-         e1l = e1l_arr(ib)
-         e1u = e1u_arr(ib)
+         do ib = 1,nbins
 
-         call vegas(sxcint0,acc,ndim,ncall_in,itmx_in,nprn,igraph)
+            e1l = e1l_arr(ib)
+            e1u = e1u_arr(ib)
 
-         results(ib)  = s1*cm2_scale
-         avgi_arr(ib) = s1*cm2_scale
-         sd_arr(ib)   = s2*cm2_scale
-      end do      
+            call vegas(sxcint0,acc,ndim,ncall_in,itmx_in,nprn,igraph)
+
+            if (Isnan(s1)) s1 = 0.d0
+            if (Isnan(s2)) s2 = 0.d0
+            results(ib)  = s1*cm2_scale
+            avgi_arr(ib) = s1*cm2_scale
+            sd_arr(ib)   = s2*cm2_scale
+         end do
+
+      else
+
+         do ib = 1,nbins
+
+            mttl = e1l_arr(ib)
+            mttu = e1u_arr(ib)
+            do i = 1,100
+               xinv2(i) = 0.d0
+            end do
+
+            call vegas(sxcint0,acc,ndim,ncall_in,itmx_in,nprn,igraph)
+
+            xnorm = itmx_in*calls
+            sum = 0.d0
+            do i = 1,100
+               sum = sum + xinv2(i)/xnorm
+            end do
+            if (Isnan(sum)) sum = 0.d0
+
+            if (Isnan(s1)) s1 = 0.d0
+            if (Isnan(s2)) s2 = 0.d0
+            results(ib)  = sum*cm2_scale
+            avgi_arr(ib) = s1*cm2_scale
+            sd_arr(ib)   = s2*cm2_scale
+         end do
+
+      endif
 
       return
       end
@@ -83,7 +124,8 @@ Cf2py intent(out) :: results, avgi_arr, sd_arr
 
       function sxcint0(x) 
       implicit none
-      integer ix
+      integer ix,iy
+      integer nbins_common
       real*8 x(8),me,mmu,mp,mhadmin,dm2,mmu2,mp2,emu,capy,
      x   capsx,mx2,t,
      x   v2,dp,dm,k1dpp,kdpp,lams,lamq,lamY,pi,xjac,s0,
@@ -96,14 +138,18 @@ Cf2py intent(out) :: results, avgi_arr, sd_arr
      x   argsx,bigX,arg,t1,dt,xmid,xinv,wgt,
      x   t2,u,xjacp,alpha,xjacp1,v2lab,yx,e1,
      x   vtheta,Gamma,mx,v2test,vthetamin,
-     x   vthetamax,ex,e1l,e1u
+     x   vthetamax,ex,e1l,e1u,mttl,mttu,xinv2,vx,lamqarg
+      logical emuout
       common/masses/me,mmu,mp,dm2,mmu2,mp2,mx
       common/inputs/emu,Gamma
       common/vegaswgt/wgt
       common/intvar/sx,capy,t,v2,kdq,k1dq,k1dpp,kdpp,ppdp
       common/checkvars/denom,lams,dsig
-      common/bins/xmid(1000),xinv(1000),sum
+      common/bins/xmid(1000),xinv(1000),xinv2(1000),sum,
+     x   nbins_common
       common/E1lim/e1l,e1u
+      common/InvMasslim/mttl,mttu
+      common/arg/emuout
 
  
       
@@ -117,6 +163,10 @@ Cf2py intent(out) :: results, avgi_arr, sd_arr
       s0 = 2.*s + mmu2 + mp2
       lams = 4.*s**2 - 4.*mmu2*mp2
       argsx = lams*(lams - 4.d0*s*dm2 - 4.d0*mmu2*dm2+dm2**2)
+      if (argsx.lt.0.d0) then
+         sxcint0 = 0.d0
+         return
+      endif
 
       sxmin = (lams +2.d0*dm2*(s+mp2) - dsqrt(argsx))/2.d0/s0
       sxmax = 2.*(s - 2.d0*mmu*mp)
@@ -124,7 +174,8 @@ Cf2py intent(out) :: results, avgi_arr, sd_arr
       if (sxmin.lt.4.*me*(me+mp)) sxmin = 4.*me*(me+mp)
 
       if (sxmin.ge.sxmax)then
-         write(6,*)'sx problem',sxmin,sxmax
+         sxcint0 = 0.d0
+         return
       endif
 
       capsx = sxmin+(sxmax-sxmin)*x(1)
@@ -132,18 +183,23 @@ Cf2py intent(out) :: results, avgi_arr, sd_arr
 
 
       if(sxmax.lt.sxmin) then
-       write(6,*), 'sxmin prob', sxmax-sxmin
+         sxcint0 = 0.d0
+         return
       endif
 
       if(Isnan(capsx)) then
-      write(6,*)'capsx is NAN',dlog(sxmin)+(dlog(sxmax)-dlog(sxmin))
-     x ,xjacp
+         sxcint0 = 0.d0
+         return
       endif
 
 
       bigX = 2.d0*s-capsx
       t1 = (lams-2.d0*s*capsx)/(2.d0*mp2)
       arg = (lams-2.d0*s*capsx)**2-4.d0*mmu2*mp2*capsx**2
+      if (arg.lt.0.d0)then
+         sxcint0 = 0.d0
+         return
+      endif
 
       ymin = t1-(1/2.d0/mp2)*dsqrt(arg)
       ymax = capsx-4.d0*me*(me+mp)
@@ -155,9 +211,8 @@ Cf2py intent(out) :: results, avgi_arr, sd_arr
       if(ymax.gt.ymax1) ymax = ymax1
 
 
-      if (arg.lt.0.d0)then
-         write(6,*)'arg for y',arg,ymax
-         sxcint0 = 0.
+      if (ymin.ge.ymax)then
+         sxcint0 = 0.d0
          return
       endif
 
@@ -177,15 +232,18 @@ Cf2py intent(out) :: results, avgi_arr, sd_arr
       t2 = 2.d0*(capsx-capy+mp2)
       u = (capsx**2+4.d0*capy*mp2)*((capsx-capy)**2-
      x 2.d0*m2*(capsx-capy)+4.d0*m2*(me2-mp2))
+      if (u.lt.0.d0)then
+         sxcint0 = 0.d0
+         return
+      endif
 
       tmin = (t1 - dsqrt(u))/t2
       tmax = (t1 + dsqrt(u))/t2
 
       
       if (tmin.ge.tmax)then
-         sxcint0 = 0.
+         sxcint0 = 0.d0
          return
-         write(6,*)'tminmax=',tmin,tmax
       endif
       if (tmin.le.0.d0) then
 c      write(6,*)'tmin problem',tmin
@@ -216,7 +274,8 @@ c      write(6,*)'tmin problem',tmin
       v2 = mx**2+mx*Gamma*dtan(vtheta)
 
       if(Isnan(v2).or.v2.lt.0.d0) then
-      write(6,*) 'v2 = ', v2
+         sxcint0 = 0.d0
+         return
       endif
 
       xjacp = xjacp*(vthetamax-vthetamin)
@@ -231,21 +290,28 @@ c      write(6,*)'tmin problem',tmin
 
       xjacp = xjacp
       
-      lamq =dsqrt(v2**2+me2**2+me2**2-2.d0*(me2*v2+me2*v2+me2*me2)) 
-
-      If(Isnan(lamq))then
-      write(6,*) "lamq", lamq
+      lamqarg = v2**2+me2**2+me2**2
+     x   -2.d0*(me2*v2+me2*v2+me2*me2)
+      if(lamqarg.le.0.d0) then
+         sxcint0 = 0.d0
+         return
       endif
+      lamq = dsqrt(lamqarg)
 
       kvec = dsqrt(emu**2-me**2)
       rho = dsqrt(capsx**2/4.d0+capy*mp2)
       denom = 8.d0*v2*8.d0*rho*8.d0*mp*kvec
+      if(denom.le.0.d0) then
+         sxcint0 = 0.d0
+         return
+      endif
 
 
       sxcint0 = xjacp*lamq/denom 
 
       if(Isnan(lamq)) then
-      sxcint0 =0.d0
+         sxcint0 = 0.d0
+         return
       endif
 
 
@@ -256,6 +322,10 @@ c      write(6,*)'tmin problem',tmin
       dsig = dsig0(m2,v2,t,capsx,capy,k1dpp,kdpp,kdq,
      x k1dq,ppdp)
 
+      if(Isnan(dsig)) then
+         sxcint0 = 0.d0
+         return
+      endif
       
       sxcint0 = sxcint0*dsig
 
@@ -265,9 +335,18 @@ c      write(6,*)'tmin problem',tmin
       Ex = e1/emu
       ix = Ex*100+1   !dividing ix into 100 bins (cos\theta_e = -1 --> ix = 0 and cos\theta_e = 1 --> ix = 100  )
 
-      if (ix.gt.100)ix = 100 
-      if (e1.le.e1l .or. e1.ge.e1u) then
+      if (ix.gt.100) ix = 100
+      if (ix.lt.1) ix = 1
+      if (emuout .and. (e1.le.e1l .or. e1.ge.e1u)) then
          sxcint0 = 0.d0
+      endif
+
+      vx = dsqrt(v2)
+      iy = vx-0.5d0
+      if (iy.gt.nbins_common) iy = nbins_common
+      if (iy.lt.1) iy = 1
+      if(.not.emuout .and. vx.gt.mttl .and. vx.lt.mttu) then
+         xinv2(iy) = xinv2(iy) + sxcint0*wgt
       endif
 
       return

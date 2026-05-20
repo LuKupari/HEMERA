@@ -6,15 +6,17 @@ C     f2py wrapper for the SM b-diagram contribution.
 
       subroutine compute_b_sm(z_in, a_in, mp_in, mmu_in, me_in,
      x   emu_in, nbins, e1l_arr, e1u_arr, ncall_in, itmx_in,
-     x   nprn_in, results, avgi_arr, sd_arr)
+     x   nprn_in, distribution_in, results, avgi_arr, sd_arr)
 
 Cf2py intent(in)  :: z_in, a_in, mp_in, mmu_in, me_in, emu_in
 Cf2py intent(in)  :: nbins, e1l_arr, e1u_arr, ncall_in, itmx_in
-Cf2py intent(in)  :: nprn_in
+Cf2py intent(in)  :: nprn_in, distribution_in
 Cf2py intent(out) :: results, avgi_arr, sd_arr
 
       implicit real*8 (a-z)
       integer ndim,nprn,igraph,ib,nbins,ncall_in,itmx_in,nprn_in,i
+      integer distribution_in,nbins_common
+      logical :: emuout
       real*8 z_in,a_in,mp_in,mmu_in,me_in,emu_in
       real*8 e1l_arr(nbins),e1u_arr(nbins)
       real*8 results(nbins),avgi_arr(nbins),sd_arr(nbins)
@@ -27,8 +29,11 @@ Cf2py intent(out) :: results, avgi_arr, sd_arr
       common/chrg/z,a
       common/vegascalls/calls
       external sxcint0
-      common/bins/xmid(1000),xinv(1000),sum
+      common/bins/xmid(1000),xinv(1000),xinv2(1000),sum,
+     x   nbins_common
       common/E1lim/e1l,e1u
+      common/InvMasslim/mttl,mttu
+      common/arg/emuout
       data cm2_scale /1.d-27/
 
 
@@ -56,31 +61,67 @@ Cf2py intent(out) :: results, avgi_arr, sd_arr
       do i = 1,100
          xmid(i) = dfloat(i)
       end do
-      
-      do ib = 1,nbins
 
-         e1l = e1l_arr(ib)
-         e1u = e1u_arr(ib)
+      emuout = distribution_in .eq. 0
+      nbins_common = nbins
 
-         do i = 1,100
-            xinv(i) = 0.d0
+      if(emuout) then
+
+         do ib = 1,nbins
+
+            e1l = e1l_arr(ib)
+            e1u = e1u_arr(ib)
+
+            do i = 1,100
+               xinv(i) = 0.d0
+            end do
+
+            call vegas(sxcint0,acc,ndim,ncall_in,itmx_in,nprn,igraph)
+
+            xnorm = itmx_in*calls
+            sum = 0.d0
+            do i = 1,100
+               sum = sum + xinv(i)/xnorm
+            end do
+            if (Isnan(sum)) sum = 0.d0
+
+            if (Isnan(s1)) s1 = 0.d0
+            if (Isnan(s2)) s2 = 0.d0
+            results(ib)  = sum*cm2_scale
+            avgi_arr(ib) = s1*cm2_scale
+            sd_arr(ib)   = s2*cm2_scale
          end do
 
-         call vegas(sxcint0,acc,ndim,ncall_in,itmx_in,nprn,igraph)
 
-         xnorm = itmx_in*calls
-         sum = 0.d0
-         do i = 1,100
-            sum = sum + xinv(i)/xnorm
+      else
+
+!        New --------------------------------------------
+         do ib = 1,nbins
+
+            mttl = e1l_arr(ib)
+            mttu = e1u_arr(ib)
+            do i = 1,100
+               xinv2(i) = 0.d0
+            end do
+
+            call vegas(sxcint0,acc,ndim,ncall_in,itmx_in,nprn,igraph)
+
+            xnorm = itmx_in*calls
+            sum = 0.d0
+            do i = 1,100
+                  sum = sum + xinv2(i)/xnorm
+            end do
+            if (Isnan(sum)) sum = 0.d0
+
+            if (Isnan(s1)) s1 = 0.d0
+            if (Isnan(s2)) s2 = 0.d0
+            results(ib)  = sum*cm2_scale
+!         avgi_arr(ib) = s1*cm2_scale
+!         sd_arr(ib)   = s2*cm2_scale
          end do
-         if (Isnan(sum)) sum = 0.d0
 
-         if (Isnan(s1)) s1 = 0.d0
-         if (Isnan(s2)) s2 = 0.d0
-         results(ib)  = sum*cm2_scale
-         avgi_arr(ib) = s1*cm2_scale
-         sd_arr(ib)   = s2*cm2_scale
-      end do
+      endif
+!------------------------------------------------------
 
       return
       end
@@ -88,7 +129,8 @@ Cf2py intent(out) :: results, avgi_arr, sd_arr
       
       function sxcint0(x) !this has a delta function for xbj
       implicit none
-      integer ix
+      integer ix,iy
+      integer nbins_common
       real*8 x(8),me,mmu,mp,mhadmin,dm2,mmu2,mp2,emu,capy,
      x   capsx,mx2,t,
      x   v2,dp,dm,k1dpp,kdpp,lams,lamq,lamY,pi,xjac,s0,
@@ -100,14 +142,18 @@ Cf2py intent(out) :: results, avgi_arr, sd_arr
      x   v2smr,ppdp,dsig0,kvec,domegakap,dphi1,
      x   argsx,bigX,arg,t1,dt,xmid,xinv,wgt,
      x   t2,u,xjacp,alpha,xjacp1,v2lab,vx,e1,lamqarg,
-     x   emuout,Ex,e1l,e1u;
+     x   Ex,e1l,e1u,mttl,mttu,xinv2
+      logical emuout
       common/masses/me,mmu,mp,dm2,mmu2,mp2
       common/inputs/emu
       common/vegaswgt/wgt
       common/intvar/sx,capy,t,v2,kdq,k1dq,k1dpp,kdpp,ppdp
       common/checkvars/denom,lams,dsig
-      common/bins/xmid(1000),xinv(1000),sum
+      common/bins/xmid(1000),xinv(1000),xinv2(1000),sum,
+     x   nbins_common
       common/E1lim/e1l,e1u
+      common/InvMasslim/mttl,mttu
+      common/arg/emuout
 
       data pi/3.14159d0/,alpha/7.2993d-3/
 
@@ -281,6 +327,17 @@ c      write(6,*)  tmax,tmin
       if (e1.gt.e1l .and. e1.lt.e1u) then
          xinv(ix) = xinv(ix) + sxcint0*wgt
       endif
+
+!-------------------------New-------------
+      vx = dsqrt(v2)
+      iy = vx-0.5d0
+      if (iy.gt.nbins_common) iy = nbins_common
+      if (iy.lt.1) iy = 1
+      If(vx.gt.mttl.and.vx.lt.mttu) then
+         xinv2(iy) = xinv2(iy) + sxcint0*wgt
+      endif
+!-------------------------------------------      
+
 
       return
       end

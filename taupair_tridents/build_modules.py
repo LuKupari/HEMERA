@@ -108,9 +108,9 @@ def build(which: str = "all", verbose: bool = True) -> None:
             )
 
         for built_module in built_modules:
+            for stale_module in MODULES_DIR.glob(f"{files['module']}*.so"):
+                stale_module.unlink()
             destination = MODULES_DIR / built_module.name
-            if destination.exists():
-                destination.unlink()
             shutil.move(str(built_module), destination)
 
 if __name__ == "__main__":
