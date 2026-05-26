@@ -1,7 +1,8 @@
 # Tau Pair Tridents Cross-Sections
 
 This code builds the Fortran integrations with `f2py` and plots the outgoing
-muon energy differential cross sections.
+muon energy and invariant mass differential cross sections. These cross-sections are calculated for
+SM (Bethe-Heitler-like) and BSM (scalar mediated) channels.
 
 ## Setup
 
